@@ -1,0 +1,458 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT
+  PARENT
+  ASSISTANT
+  INSTRUCTOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum CourseState {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum LessonType {
+  VIDEO
+  FILE
+  QUIZ
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  WITHDRAWN
+}
+
+enum QuestionType {
+  MCQ_SINGLE
+  MCQ_MULTI
+  ESSAY
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+enum ReportScope {
+  STUDENT
+  PARENT_BULK
+}
+
+enum ReportStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum ViewEventType {
+  PLAY
+  PAUSE
+  SEEK
+  SPEED
+  COMPLETE
+}
+
+enum AttendanceType {
+  CONTENT
+  MANUAL
+  LIVE
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  password  String
+  role      UserRole
+  status    UserStatus @default(ACTIVE)
+  firstName String?
+  lastName  String?
+  locale    String     @default("en")
+  timezone  String     @default("Africa/Cairo")
+  avatar    String?
+  
+  // MFA fields
+  mfaEnabled    Boolean @default(false)
+  mfaSecret     String?
+  backupCodes   String[]
+  
+  // Timestamps
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastLoginAt   DateTime?
+  emailVerifiedAt DateTime?
+  
+  // Relations
+  ownedCourses     Course[]       @relation("CourseOwner")
+  enrollments      Enrollment[]
+  parentLinks      ParentLink[]   @relation("Parent")
+  childLinks       ParentLink[]   @relation("Student") 
+  quizAttempts     Attempt[]
+  viewEvents       ViewEvent[]
+  attendance       Attendance[]
+  sessions         Session[]
+  deviceBindings   DeviceBinding[]
+  auditLogs        AuditLog[]     @relation("Actor")
+  reportRequests   ReportRequest[]
+  
+  @@map("users")
+}
+
+model ParentLink {
+  id        String   @id @default(uuid())
+  parentId  String
+  studentId String
+  createdAt DateTime @default(now())
+  
+  parent   User @relation("Parent", fields: [parentId], references: [id], onDelete: Cascade)
+  student  User @relation("Student", fields: [studentId], references: [id], onDelete: Cascade)
+  
+  @@unique([parentId, studentId])
+  @@map("parent_links")
+}
+
+model Course {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  ownerId     String
+  state       CourseState @default(DRAFT)
+  language    String      @default("en")
+  thumbnail   String?
+  
+  // Settings
+  allowDownloads Boolean @default(false)
+  drmEnabled     Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  owner       User         @relation("CourseOwner", fields: [ownerId], references: [id])
+  sections    Section[]
+  enrollments Enrollment[]
+  
+  @@map("courses")
+}
+
+model Section {
+  id       String @id @default(uuid())
+  courseId String
+  title    String
+  order    Int
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+  
+  @@map("sections")
+}
+
+model Lesson {
+  id          String     @id @default(uuid())
+  sectionId   String
+  type        LessonType
+  title       String
+  description String?
+  order       Int
+  
+  // Release rules
+  unlockAt                DateTime?
+  requiresPrevCompletion  Boolean   @default(false)
+  requiresQuizPass        Boolean   @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  section      Section       @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  mediaAssets  MediaAsset[]
+  quiz         Quiz?
+  viewEvents   ViewEvent[]
+  attendance   Attendance[]
+  
+  @@map("lessons")
+}
+
+model MediaAsset {
+  id          String  @id @default(uuid())
+  lessonId    String
+  url         String
+  originalName String?
+  mimeType    String?
+  size        Int?
+  duration    Float?  // in seconds
+  
+  // Processing status
+  processed   Boolean @default(false)
+  hlsUrl      String?
+  dashUrl     String?
+  thumbnailUrl String?
+  
+  // DRM keys (encrypted)
+  drmKeys     Json?
+  
+  // Captions
+  captions    Caption[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  
+  @@map("media_assets")
+}
+
+model Caption {
+  id           String @id @default(uuid())
+  mediaAssetId String
+  language     String
+  label        String
+  url          String
+  isDefault    Boolean @default(false)
+  
+  createdAt DateTime @default(now())
+  
+  mediaAsset MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+  
+  @@map("captions")
+}
+
+model Enrollment {
+  id       String           @id @default(uuid())
+  courseId String
+  userId   String
+  status   EnrollmentStatus @default(ACTIVE)
+  cohortId String?
+  
+  enrolledAt  DateTime  @default(now())
+  completedAt DateTime?
+  
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([courseId, userId])
+  @@map("enrollments")
+}
+
+model Quiz {
+  id         String  @id @default(uuid())
+  lessonId   String  @unique
+  timeLimit  Int?    // minutes
+  attempts   Int     @default(1)
+  passMark   Float   @default(70.0) // percentage
+  
+  // Question pool settings
+  drawRule   Json?   // { "total": 10, "categories": {...} }
+  
+  // Settings
+  shuffleQuestions Boolean @default(true)
+  shuffleAnswers   Boolean @default(true)
+  showResults      Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  lesson    Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  questions Question[]
+  attempts  Attempt[]
+  
+  @@map("quizzes")
+}
+
+model Question {
+  id       String       @id @default(uuid())
+  quizId   String
+  type     QuestionType
+  text     String
+  mediaRef String?      // Reference to uploaded image/video
+  
+  // MCQ specific
+  options  String[]     // For MCQ questions
+  answers  String[]     // Correct answer indices or essay rubric
+  
+  // Metadata
+  points   Float        @default(1.0)
+  category String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  quiz        Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+  
+  @@map("questions")
+}
+
+model Attempt {
+  id     String        @id @default(uuid())
+  quizId String
+  userId String
+  status AttemptStatus @default(IN_PROGRESS)
+  
+  startAt   DateTime  @default(now())
+  endAt     DateTime?
+  score     Float?
+  maxScore  Float?
+  passed    Boolean?
+  
+  // Anti-cheat flags
+  flags     String[]  // ["tab_switch", "full_screen_exit", etc.]
+  
+  // Browser/device info for security
+  userAgent String?
+  ipAddress String?
+  
+  quiz        Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+  
+  @@map("attempts")
+}
+
+model Submission {
+  id         String @id @default(uuid())
+  attemptId  String
+  questionId String
+  response   Json   // Student's answer(s)
+  score      Float?
+  
+  createdAt DateTime @default(now())
+  gradedAt  DateTime?
+  
+  attempt  Attempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  @@unique([attemptId, questionId])
+  @@map("submissions")
+}
+
+model ViewEvent {
+  id         String        @id @default(uuid())
+  userId     String
+  lessonId   String
+  eventType  ViewEventType
+  position   Float         // seconds
+  speed      Float?        // playback speed
+  timestamp  DateTime      @default(now())
+  
+  // Session tracking
+  sessionId  String?
+  
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  
+  @@map("view_events")
+}
+
+model Attendance {
+  id       String         @id @default(uuid())
+  userId   String
+  lessonId String
+  type     AttendanceType
+  value    Float          // 0.0 to 1.0 (percentage watched)
+  
+  createdAt DateTime @default(now())
+  
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, lessonId, type])
+  @@map("attendance")
+}
+
+model ReportRequest {
+  id        String       @id @default(uuid())
+  creatorId String
+  scope     ReportScope
+  status    ReportStatus @default(QUEUED)
+  
+  // Request parameters
+  parameters Json         // { studentIds: [], format: "pdf", etc. }
+  
+  // Result
+  fileRef   String?      // S3 key or URL
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  creator User @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  
+  @@map("report_requests")
+}
+
+model DeviceBinding {
+  id         String    @id @default(uuid())
+  userId     String
+  deviceHash String    // Hash of device fingerprint
+  deviceName String?   // User-friendly name
+  platform   String?   // web, ios, android
+  
+  active     Boolean   @default(true)
+  lastSeen   DateTime  @default(now())
+  
+  createdAt  DateTime  @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, deviceHash])
+  @@map("device_bindings")
+}
+
+model Session {
+  id          String    @id @default(uuid())
+  userId      String
+  deviceId    String?   // Reference to device binding
+  token       String    @unique
+  refreshToken String?  @unique
+  
+  validUntil  DateTime
+  
+  createdAt   DateTime  @default(now())
+  lastUsed    DateTime  @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+model AuditLog {
+  id       String   @id @default(uuid())
+  actorId  String
+  action   String   // "login", "create_course", "impersonate", etc.
+  target   String?  // Resource ID or description
+  metadata Json?    // Additional context
+  
+  ipAddress String?
+  userAgent String?
+  
+  timestamp DateTime @default(now())
+  
+  actor User @relation("Actor", fields: [actorId], references: [id], onDelete: Cascade)
+  
+  @@map("audit_logs")
+}

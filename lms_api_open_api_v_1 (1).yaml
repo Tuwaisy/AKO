@@ -1,0 +1,352 @@
+openapi: 3.0.3
+info:
+  title: LMS API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      required: [id, email, role]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { type: string, enum: [student, parent, assistant, instructor, admin] }
+        locale: { type: string }
+        tz: { type: string }
+        status: { type: string, enum: [active, suspended] }
+    ParentLink:
+      type: object
+      properties:
+        parentId: { type: string, format: uuid }
+        studentId: { type: string, format: uuid }
+    Course:
+      type: object
+      required: [id, title, ownerId, state]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        ownerId: { type: string, format: uuid }
+        state: { type: string, enum: [draft, scheduled, published, archived] }
+        language: { type: string }
+    Section:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        courseId: { type: string, format: uuid }
+        order: { type: integer }
+        title: { type: string }
+    Lesson:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sectionId: { type: string, format: uuid }
+        type: { type: string, enum: [video, file, quiz] }
+        order: { type: integer }
+        releaseRule:
+          type: object
+          properties:
+            unlockAt: { type: string, format: date-time, nullable: true }
+            requiresPrevCompletion: { type: boolean }
+            requiresQuizPass: { type: boolean }
+    MediaAsset:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        lessonId: { type: string, format: uuid }
+        url: { type: string }
+        duration: { type: number }
+        captions: { type: array, items: { type: string } }
+    Enrollment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        courseId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        status: { type: string, enum: [active, completed, withdrawn] }
+    Quiz:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        lessonId: { type: string, format: uuid }
+        timeLimit: { type: integer, nullable: true }
+        attempts: { type: integer }
+        passMark: { type: number }
+        drawRule: { type: object, nullable: true }
+    Question:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        quizId: { type: string, format: uuid }
+        type: { type: string, enum: [mcq_single, mcq_multi, essay] }
+        text: { type: string }
+        mediaRef: { type: string, nullable: true }
+        options: { type: array, items: { type: string }, nullable: true }
+        answers: { type: array, items: { type: string }, nullable: true }
+    Attempt:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        quizId: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time, nullable: true }
+        score: { type: number, nullable: true }
+        flags: { type: array, items: { type: string } }
+    ViewEvent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        lessonId: { type: string, format: uuid }
+        eventType: { type: string, enum: [play, pause, seek, speed] }
+        position: { type: number }
+        speed: { type: number, nullable: true }
+        ts: { type: string, format: date-time }
+    ReportRequest:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        scope: { type: string, enum: [student, parent_bulk] }
+        status: { type: string, enum: [queued, running, done, failed] }
+        fileRef: { type: string, nullable: true }
+    AuditLog:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        actorId: { type: string, format: uuid }
+        action: { type: string }
+        target: { type: string }
+        metadata: { type: object }
+        ts: { type: string, format: date-time }
+paths:
+  /auth/login:
+    post:
+      summary: Login with email/password or SSO code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  properties: { email: {type: string, format: email}, password: {type: string} }
+                - type: object
+                  properties: { idToken: {type: string} } # OIDC
+      responses:
+        '200': { description: OK }
+  /auth/refresh:
+    post:
+      summary: Rotate refresh token
+      responses:
+        '200': { description: OK }
+  /auth/logout:
+    post:
+      summary: Invalidate session/device
+      responses:
+        '204': { description: No Content }
+  /users/{id}:
+    get:
+      summary: Get user profile
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { $ref: '#/components/schemas/User' } } }
+  /parents/{id}/children:
+    get:
+      summary: List children of a parent
+      responses: { '200': { description: OK } }
+    post:
+      summary: Link a student to this parent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId]
+              properties: { studentId: { type: string, format: uuid } }
+      responses: { '201': { description: Linked } }
+  /courses:
+    post:
+      summary: Create course
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Course' } } } }
+      responses: { '201': { description: Created } }
+    get:
+      summary: List courses
+      responses: { '200': { description: OK } }
+  /courses/{id}:
+    get:
+      summary: Get course
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: OK } }
+    patch:
+      summary: Update course
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Course' } } } }
+      responses: { '200': { description: OK } }
+  /sections:
+    post:
+      summary: Create section
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Section' } } } }
+      responses: { '201': { description: Created } }
+  /lessons:
+    post:
+      summary: Create lesson
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Lesson' } } } }
+      responses: { '201': { description: Created } }
+  /media/sign:
+    post:
+      summary: Get signed URL for media upload
+      responses: { '200': { description: OK } }
+  /lessons/{id}/media:
+    post:
+      summary: Attach uploaded media to a lesson
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/MediaAsset' } } } }
+      responses: { '201': { description: Created } }
+  /courses/{id}/enroll:
+    post:
+      summary: Enroll a single user into a course
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties: { userId: { type: string, format: uuid } }
+      responses: { '201': { description: Enrolled } }
+  /enrollments/bulk:
+    post:
+      summary: CSV bulk enrollment (dry-run or commit)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+                dryRun: { type: boolean, default: true }
+      responses: { '200': { description: Validation report or commit result } }
+  /lessons/{id}/quiz:
+    post:
+      summary: Create or replace quiz for a lesson
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { $ref: '#/components/schemas/Quiz' } } } }
+      responses: { '201': { description: Created } }
+  /quizzes/{id}/questions:
+    post:
+      summary: Add questions to quiz
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items: { $ref: '#/components/schemas/Question' }
+      responses: { '201': { description: Created } }
+  /quizzes/{id}/attempts:
+    post:
+      summary: Start attempt
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Attempt' } } } } }
+  /attempts/{id}/submit:
+    post:
+      summary: Submit attempt
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { type: object } } } }
+      responses: { '200': { description: Graded result } }
+  /students/{id}/progress:
+    get:
+      summary: Get student progress & analytics
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: OK } }
+  /courses/{id}/analytics:
+    get:
+      summary: Course analytics
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: OK } }
+  /reports/student:
+    post:
+      summary: Generate a single student report (PDF/CSV)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentId, format]
+              properties:
+                studentId: { type: string, format: uuid }
+                format: { type: string, enum: [pdf, csv] }
+      responses: { '202': { description: Accepted } }
+  /reports/parent-bulk:
+    post:
+      summary: Generate bulk parent reports for selected students
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [studentIds]
+              properties:
+                studentIds: { type: array, items: { type: string, format: uuid } }
+      responses: { '202': { description: Accepted } }
+  /attendance:
+    post:
+      summary: Record attendance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, lessonId, type, value]
+              properties:
+                userId: { type: string, format: uuid }
+                lessonId: { type: string, format: uuid }
+                type: { type: string, enum: [content, manual, live] }
+                value: { type: number }
+      responses: { '201': { description: Created } }
+    get:
+      summary: Get attendance by query
+      parameters:
+        - in: query
+          name: userId
+          schema: { type: string }
+        - in: query
+          name: lessonId
+          schema: { type: string }
+      responses: { '200': { description: OK } }
+  /courses/{id}/enrollments.csv:
+    get:
+      summary: Export enrollments as CSV
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: CSV stream } }
+  /admin/impersonate:
+    post:
+      summary: Start impersonation
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, reason]
+              properties:
+                userId: { type: string, format: uuid }
+                reason: { type: string }
+      responses: { '201': { description: Impersonation started } }
+  /admin/audit-logs:
+    get:
+      summary: List audit logs
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/AuditLog' } } } } } }
