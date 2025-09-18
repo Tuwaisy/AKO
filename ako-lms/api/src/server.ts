@@ -14,7 +14,10 @@ import { authMiddleware } from './middleware/auth';
 // Route imports
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
+import parentRoutes from './routes/parents';
 import courseRoutes from './routes/courses';
+import sectionRoutes from './routes/sections';
+import lessonRoutes from './routes/lessons';
 import enrollmentRoutes from './routes/enrollments';
 import quizRoutes from './routes/quizzes';
 import mediaRoutes from './routes/media';
@@ -137,7 +140,10 @@ class Server {
     // API routes
     this.app.use('/api/auth', authRoutes);
     this.app.use('/api/users', authMiddleware, userRoutes);
+    this.app.use('/api/parents', authMiddleware, parentRoutes);
     this.app.use('/api/courses', authMiddleware, courseRoutes);
+    this.app.use('/api/sections', authMiddleware, sectionRoutes);
+    this.app.use('/api/lessons', authMiddleware, lessonRoutes);
     this.app.use('/api/enrollments', authMiddleware, enrollmentRoutes);
     this.app.use('/api/quizzes', authMiddleware, quizRoutes);
     this.app.use('/api/media', authMiddleware, mediaRoutes);

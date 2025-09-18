@@ -42,7 +42,7 @@ const fileFormat = winston.format.combine(
 );
 
 // Define transports
-const transports = [
+const transports: winston.transport[] = [
   // Console transport
   new winston.transports.Console({
     format: logFormat,
@@ -116,8 +116,8 @@ export const logger = winston.createLogger({
   ],
 });
 
-// Add stream interface for Morgan
-logger.stream = {
+// Create stream interface for Morgan
+const stream = {
   write: (message: string) => {
     logger.info(message.trim());
   },

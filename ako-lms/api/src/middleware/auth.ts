@@ -4,7 +4,7 @@ import { PrismaClient, User, UserRole } from '@prisma/client';
 import { config } from '../config/environment';
 import { logger } from '../utils/logger';
 
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
   user?: User;
   prisma?: PrismaClient;
 }

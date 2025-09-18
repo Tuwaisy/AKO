@@ -109,7 +109,7 @@ model User {
   enrollments      Enrollment[]
   parentLinks      ParentLink[]   @relation("Parent")
   childLinks       ParentLink[]   @relation("Student") 
-  quizAttempts     Attempt[]
+  quizAttempts     Attempt[] @relation("UserAttempts")
   viewEvents       ViewEvent[]
   attendance       Attendance[]
   sessions         Session[]
@@ -263,7 +263,7 @@ model Quiz {
   id         String  @id @default(uuid())
   lessonId   String  @unique
   timeLimit  Int?    // minutes
-  attempts   Int     @default(1)
+  maxAttempts   Int     @default(1)
   passMark   Float   @default(70.0) // percentage
   
   // Question pool settings
@@ -279,7 +279,7 @@ model Quiz {
   
   lesson    Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   questions Question[]
-  attempts  Attempt[]
+  attempts  Attempt[] @relation("QuizAttempts")
   
   @@map("quizzes")
 }
@@ -327,8 +327,8 @@ model Attempt {
   userAgent String?
   ipAddress String?
   
-  quiz        Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quiz        Quiz         @relation("QuizAttempts", fields: [quizId], references: [id], onDelete: Cascade)
+  user        User         @relation("UserAttempts", fields: [userId], references: [id], onDelete: Cascade)
   submissions Submission[]
   
   @@map("attempts")

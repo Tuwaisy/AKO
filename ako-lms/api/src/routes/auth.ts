@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
@@ -15,7 +15,7 @@ const router = Router();
 router.post('/login', [
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
-], async (req: any, res) => {
+], async (req: any, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -338,7 +338,7 @@ router.post('/mfa/setup', authMiddleware, async (req: any, res) => {
 // Verify and enable MFA
 router.post('/mfa/enable', authMiddleware, [
   body('code').isLength({ min: 6, max: 6 }).isNumeric(),
-], async (req: any, res) => {
+], async (req: any, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -404,7 +404,7 @@ router.post('/mfa/enable', authMiddleware, [
 router.post('/mfa/disable', authMiddleware, [
   body('password').notEmpty(),
   body('code').isLength({ min: 6, max: 6 }).isNumeric(),
-], async (req: any, res) => {
+], async (req: any, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
